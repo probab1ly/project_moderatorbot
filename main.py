@@ -11,7 +11,7 @@ import pymorphy3
 import re
 import asyncio
 import logging
-proverka = ['еблан']
+proverka = ['***', '***', '***']
 # Словарь для хранения предупреждений пользователей
 checking = {}
 logging.basicConfig(level=logging.INFO)
@@ -128,7 +128,7 @@ async def check(message: Message, bot: Bot):
         print(f'Произошла ошибка при проверке текста: {e}')
 
 async def main():
-    bot = Bot(token='7277850909:AAF937XJlK5TTSSCli74tybzc6hjez-xcEk', default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token='*****', default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(router)
     await bot.delete_webhook(True)
