@@ -11,9 +11,11 @@ import pymorphy3
 import re
 import asyncio
 import logging
-proverka = ['***', '***', '***']
-# Словарь для хранения предупреждений пользователей
-checking = {}
+proverka_row = ['***', '***', '***']
+morph = pymorphy3.MorphAnalyzer()
+proverka = set(morph.parse(pr)[0].normal_form for pr in proverka_row) # Приводим каждое слово к его начальной форме
+
+checking = {} # Словарь для хранения предупреждений пользователей
 logging.basicConfig(level=logging.INFO)
 
 async def admin(bot, message):
@@ -27,7 +29,7 @@ def get_time(time: str | None):
     if not time:
         return None
     
-    re_match = re.match(r"(\d+)([h|d|w|m])", time.lower().strip())
+    re_match = re.match(r"(\d+)([h|d|w|m])", time.lower().strip()) # Проверяем, что заданное время соответствует началу шаблона, например: 5h
     now_datetime = datetime.now()
 
     if re_match:
@@ -47,7 +49,7 @@ def get_time(time: str | None):
     return new_datetime
 
 router = Router()
-router.message.filter(F.chat.type == 'supergroup', F.from_user.id == 1653541807)
+router.message.filter(F.chat.type == 'supergroup', F.from_user.id == ***)
 
 @router.message(Command('ban'))
 async def ban(message: Message, bot: Bot, command: CommandObject):
@@ -58,7 +60,7 @@ async def ban(message: Message, bot: Bot, command: CommandObject):
         await message.reply('<b>Ошибка: используйте команду в ответ на сообщение пользователя, которого хотите замутить!</b>')
     date = await get_time(command.args.strip() if command.args else None)
     if date is None:
-        await message.reply('Ошибка: укажите корректный промежуток времени для бана (например, 1d, 5g, 2w)')
+        await message.reply('Ошибка: укажите корректный промежуток времени для бана (например, 1d, 5h, 2w)')
         return
     with suppress(TelegramBadRequest):
         await bot.ban_chat_member(chat_id=message.chat.id, user_id=reply_message.from_user.id, until_date=date)
@@ -82,9 +84,9 @@ async def func_mute(message: Message, bot: Bot, command: CommandObject):
         await message.reply("<b>❌  Произошла ошибка!</b>")
         return
     
-    date = get_time(command.args)
+    date = get_time(command.args.strip() if command.args else None)
     with suppress(TelegramBadRequest):
-        await bot.restrict_chat_member(chat_id=message.chat.id, user_id=reply_message.from_user.id, until_date=date, permissions=ChatPermissions(can_send_messages=False))
+        await bot.restrict_chat_member(chat_id=message.chat.id, user_id=reply_message.from_user.id, until_date=date, permissions=ChatPermissions(can_send_messages=False, can_send_other_messages=False))
         await message.answer(f"🔇 Пользователь был заглушен!")
 
 @router.message(Command('unmute'))
@@ -107,28 +109,32 @@ async def unmute(message: Message, bot: Bot):
 async def check(message: Message, bot: Bot):
     if not message.text or not message.from_user:
         return
-    morph = pymorphy3.MorphAnalyzer()
+    user_id = message.from_user.id
     try:
-        for msg in message.text.lower().strip().split():
-            word = morph.parse(msg)[0]
-            norm_word = word.normal_form
-            for pr in proverka:
-                if pr in norm_word:
-                    checking[message.from_user.id] = checking.get(message.from_user.id, 0) + 1
-                    check = checking[message.from_user.id]
-                    if check < 3:
-                        await message.reply(f'Ругательства запрещены. Предупреждение {check}/3')
-                    else:
-                        checking[message.from_user.id] = 0
-                        date = datetime.now() + timedelta(weeks=1)
-                        with suppress(TelegramBadRequest):
-                            await bot.restrict_chat_member(chat_id=message.chat.id, user_id=message.from_user.id, until_date=date, permissions=ChatPermissions(can_send_messages=False))
-                            await message.reply('Вы получили 3 предупреждения и были замучены на неделю!')
-    except Exception as e:
-        print(f'Произошла ошибка при проверке текста: {e}')
+        for msg in message.text.lower().strip().split(): # Проверяем каждое слово сообщения
 
+            norm_word = morph.parse(msg)[0].normal_form
+            if norm_word in proverka:
+                checking[user_id] = checking.get(user_id, 0) + 1
+                check = checking[user_id]
+                if check < 3:
+                    await message.reply(f'Ругательства запрещены. Предупреждение {check}/3')
+                else:
+                    checking[user_id] = 0
+                    date = datetime.now() + timedelta(weeks=1)
+                    with suppress(TelegramBadRequest): # Для игнора ошибок Telegram, чтобы бот не ломался
+                        await bot.restrict_chat_member(
+                            chat_id=message.chat.id,
+                            user_id=user_id,
+                            until_date=date,
+                            permissions=ChatPermissions(can_send_messages=False)
+                        )
+                        await message.reply('Вы получили 3 предупреждения и были замучены на неделю!')
+                break  # Только одно предупреждение за сообщение
+    except Exception as e:
+        print(f'Произошла ошибка при обработке текста: {e}')
 async def main():
-    bot = Bot(token='*****', default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token='***', default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(router)
     await bot.delete_webhook(True)
