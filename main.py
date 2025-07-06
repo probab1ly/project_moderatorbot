@@ -11,11 +11,13 @@ import pymorphy3
 import re
 import asyncio
 import logging
+
 proverka_row = ['***', '***', '***']
 morph = pymorphy3.MorphAnalyzer()
-proverka = set(morph.parse(pr)[0].normal_form for pr in proverka_row) # Приводим каждое слово к его начальной форме
+proverka = set(morph.parse(pr)[0].normal_form for pr in proverka_row) #Приводим каждое слово к его начальной форме
 
-checking = {} # Словарь для хранения предупреждений пользователей
+# Словарь для хранения предупреждений пользователей
+checking = {}
 logging.basicConfig(level=logging.INFO)
 
 async def admin(bot, message):
@@ -29,7 +31,7 @@ def get_time(time: str | None):
     if not time:
         return None
     
-    re_match = re.match(r"(\d+)([h|d|w|m])", time.lower().strip()) # Проверяем, что заданное время соответствует началу шаблона, например: 5h
+    re_match = re.match(r"(\d+)([h|d|w|m])", time.lower().strip())#Проверяем, что заданное время соответствует началу шаблона, например: 5h
     now_datetime = datetime.now()
 
     if re_match:
@@ -48,10 +50,12 @@ def get_time(time: str | None):
     new_datetime = now_datetime + time_delta
     return new_datetime
 
-router = Router()
-router.message.filter(F.chat.type == 'supergroup', F.from_user.id == ***)
+router_admin = Router() # Маршрутизатор, который будет обрабатывать команды, доступные только админам
+router_group = Router() # Маршрутизатор, который будет обрабатывать все сообщения, находящиеся только в группе 
+router_admin.message.filter(F.from_user.id.in_([1653541807]))
+router_group.message.filter(F.chat.type == 'supergroup')
 
-@router.message(Command('ban'))
+@router_admin.message(Command('ban'))
 async def ban(message: Message, bot: Bot, command: CommandObject):
     reply_message = message.reply_to_message
     if not await admin(bot, message):
@@ -60,13 +64,13 @@ async def ban(message: Message, bot: Bot, command: CommandObject):
         await message.reply('<b>Ошибка: используйте команду в ответ на сообщение пользователя, которого хотите замутить!</b>')
     date = await get_time(command.args.strip() if command.args else None)
     if date is None:
-        await message.reply('Ошибка: укажите корректный промежуток времени для бана (например, 1d, 5h, 2w)')
+        await message.reply('Ошибка: укажите корректный промежуток времени для бана (например, 1d, 5g, 2w)')
         return
     with suppress(TelegramBadRequest):
         await bot.ban_chat_member(chat_id=message.chat.id, user_id=reply_message.from_user.id, until_date=date)
-        await message.answer('Пользователь успешно заблокирован!')
+        await message.answer('🔇 Пользователь успешно заблокирован!')
 
-@router.message(Command('unban'))
+@router_admin.message(Command('unban'))
 async def unban(message: Message, bot: Bot):
     reply_message = message.reply_to_message
     if not await admin(bot, message):
@@ -74,9 +78,9 @@ async def unban(message: Message, bot: Bot):
     if not reply_message or not reply_message.from_user:
         await message.reply('<b>Ошибка: используйте команду в ответ на сообщение пользователя, которого хотите замутить!</b>')
     await bot.unban_chat_member(chat_id=message.chat.id, user_id=reply_message.from_user.id)
-    await message.answer('Блокировка с пользователя была успешно снята!')
+    await message.answer('🔇 Блокировка с пользователя была успешно снята!')
 
-@router.message(Command("mute"))
+@router_admin.message(Command("mute"))
 async def func_mute(message: Message, bot: Bot, command: CommandObject):
     reply_message = message.reply_to_message
     
@@ -89,7 +93,7 @@ async def func_mute(message: Message, bot: Bot, command: CommandObject):
         await bot.restrict_chat_member(chat_id=message.chat.id, user_id=reply_message.from_user.id, until_date=date, permissions=ChatPermissions(can_send_messages=False, can_send_other_messages=False))
         await message.answer(f"🔇 Пользователь был заглушен!")
 
-@router.message(Command('unmute'))
+@router_admin.message(Command('unmute'))
 async def unmute(message: Message, bot: Bot):
     reply_message = message.reply_to_message
     if not await admin(bot, message):
@@ -100,19 +104,22 @@ async def unmute(message: Message, bot: Bot):
         chat_id=message.chat.id,
         user_id=reply_message.from_user.id,
         permissions=ChatPermissions(
-            can_send_messages=True, can_send_other_messages=True
+            can_send_messages=True,
+            can_send_other_messages=True,
         )
     )
-    await message.answer('Пользователь успешно размучен!')
+    await message.answer('🔇 Пользователь успешно размучен!')
 
-@router.message(F.text)
+@router_group.message(F.text)
 async def check(message: Message, bot: Bot):
     if not message.text or not message.from_user:
         return
+    print(f"User: {message.from_user}, ID: {getattr(message.from_user, 'id', None)}, Text: {message.text}")
+
     user_id = message.from_user.id
     try:
-        for msg in message.text.lower().strip().split(): # Проверяем каждое слово сообщения
-
+        # Проверяем каждое слово сообщения
+        for msg in message.text.lower().strip().split():
             norm_word = morph.parse(msg)[0].normal_form
             if norm_word in proverka:
                 checking[user_id] = checking.get(user_id, 0) + 1
@@ -122,7 +129,7 @@ async def check(message: Message, bot: Bot):
                 else:
                     checking[user_id] = 0
                     date = datetime.now() + timedelta(weeks=1)
-                    with suppress(TelegramBadRequest): # Для игнора ошибок Telegram, чтобы бот не ломался
+                    with suppress(TelegramBadRequest):
                         await bot.restrict_chat_member(
                             chat_id=message.chat.id,
                             user_id=user_id,
@@ -133,10 +140,11 @@ async def check(message: Message, bot: Bot):
                 break  # Только одно предупреждение за сообщение
     except Exception as e:
         print(f'Произошла ошибка при обработке текста: {e}')
+
 async def main():
     bot = Bot(token='***', default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
-    dp.include_router(router)
+    dp.include_routers(router_admin, router_group)
     await bot.delete_webhook(True)
     await dp.start_polling(bot)
 
